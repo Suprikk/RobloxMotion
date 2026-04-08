@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Head Motion Controller</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0a0a0a; color:#fff;
+  font-family:'Segoe UI',sans-serif;
+  display:flex; flex-direction:column; align-items:center;
+  min-height:100vh; padding:16px; gap:12px;
+}
+h1 { font-size:1.3rem; color:#00d4ff; margin-top:8px; }
+.sub { font-size:0.8rem; color:#888; text-align:center; max-width:480px; }
+#status {
+  padding:8px 24px; border-radius:20px; font-size:0.85rem;
+  background:#1a1a1a; border:1px solid #444; transition:all 0.3s;
+}
+.ok   { border-color:#00ff88!important; color:#00ff88; }
+.warn { border-color:#ffaa00!important; color:#ffaa00; }
+.err  { border-color:#ff4444!important; color:#ff4444; }
+#cam-panel {
+  width:100%; max-width:480px;
+  background:#111; border:1px solid #222; border-radius:10px;
+  padding:14px 16px; display:flex; flex-direction:column; gap:10px;
+}
+#cam-panel h3 { font-size:0.78rem; color:#888; letter-spacing:1px; }
+#cam-select {
+  width:100%; padding:10px 12px;
+  background:#1a1a1a; border:1px solid #333; border-radius:8px;
+  color:#fff; font-size:0.82rem; cursor:pointer;
+}
+.cam-btns { display:flex; gap:8px; }
+.cam-btns button {
+  flex:1; padding:10px; border:none; border-radius:8px;
+  font-weight:bold; cursor:pointer; font-size:0.82rem;
+}
+#btn-start   { background:#00d4ff; color:#000; }
+#btn-start:hover { background:#00b8e0; }
+#btn-refresh { background:#1a1a1a; color:#888; border:1px solid #333; }
+#btn-refresh:hover { color:#fff; border-color:#555; }
+.cam-hint { font-size:0.72rem; color:#555; line-height:1.6; }
+.cam-hint b { color:#ffaa00; }
+#wrap {
+  position:relative; width:100%; max-width:480px;
+  border-radius:12px; overflow:hidden; border:2px solid #222; display:none;
+}
+video  { width:100%; display:block; transform:scaleX(-1); }
+canvas { position:absolute; top:0; left:0; width:100%; height:100%; transform:scaleX(-1); }
+#head-dot {
+  position:absolute; width:16px; height:16px; border-radius:50%;
+  background:#00ff88; box-shadow:0 0 10px #00ff88;
+  transform:translate(-50%,-50%); pointer-events:none;
+}
+#action-big {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:2rem; font-weight:bold; color:#00d4ff;
+  text-shadow:0 0 20px #00d4ff; opacity:0; pointer-events:none;
+}
+#zone-indicator { position:absolute; inset:0; pointer-events:none; border-radius:12px; }
+.dir-label { position:absolute; font-size:0.65rem; color:#ffffff44; font-weight:bold; letter-spacing:1px; }
+#dir-up    { top:6px;    left:50%;  transform:translateX(-50%); }
+#dir-down  { bottom:6px; left:50%;  transform:translateX(-50%); }
+#dir-left  { left:6px;   top:50%;   transform:translateY(-50%); }
+#dir-right { right:6px;  top:50%;   transform:translateY(-50%); }
+#guide {
+  width:100%; max-width:480px; background:#111;
+  border:1px solid #222; border-radius:10px; padding:12px 16px; display:none;
+}
+#guide h3 { font-size:0.78rem; color:#888; margin-bottom:8px; letter-spacing:1px; }
+.guide-row {
+  display:flex; align-items:center; gap:10px;
+  padding:5px 0; border-bottom:1px solid #1a1a1a; font-size:0.8rem;
+}
+.guide-row:last-child { border-bottom:none; }
+.guide-dir { width:100px; font-weight:bold; color:#00d4ff; font-size:0.78rem; }
+.guide-desc { color:#aaa; }
+#cfg { display:none; gap:8px; width:100%; max-width:480px; align-items:center; }
+#url {
+  flex:1; padding:10px 14px; background:#1a1a1a;
+  border:1px solid #333; border-radius:8px; color:#fff; font-size:0.82rem;
+}
+#btn-connect {
+  padding:10px 18px; border:none; border-radius:8px;
+  font-weight:bold; cursor:pointer; font-size:0.82rem; min-width:110px;
+}
+.btn-off { background:#00d4ff; color:#000; }
+.btn-off:hover { background:#00b8e0; }
+.btn-on  { background:#ff4444; color:#fff; }
+.btn-on:hover  { background:#cc3333; }
+#log {
+  width:100%; max-width:480px; background:#111; border:1px solid #222;
+  border-radius:8px; padding:8px 12px; font-size:0.72rem; color:#555;
+  font-family:monospace; height:80px; overflow-y:auto;
+}
+#loading-overlay {
+  display:none; position:fixed; inset:0; background:#0a0a0aee;
+  flex-direction:column; align-items:center; justify-content:center; gap:16px; z-index:99;
+}
+#loading-overlay.show { display:flex; }
+.spinner {
+  width:40px; height:40px; border:3px solid #333;
+  border-top-color:#00d4ff; border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text { color:#888; font-size:0.85rem; }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Loading MediaPipe...</div>
+</div>
+
+<h1>Head Motion Controller</h1>
+<p class="sub">Gerakin kepala buat kontrol karakter Roblox</p>
+
+<div id="status" class="warn">Pilih kamera dulu</div>
+
+<div id="cam-panel">
+  <h3>PILIH KAMERA</h3>
+  <select id="cam-select">
+    <option value="">-- Klik Refresh untuk detect kamera --</option>
+  </select>
+  <div class="cam-btns">
+    <button id="btn-refresh" onclick="refreshCameras()">Refresh</button>
+    <button id="btn-start" onclick="startSelected()">Mulai</button>
+  </div>
+  <p class="cam-hint">
+    <b>PC/Laptop:</b> Pilih webcam atau DroidCam dari daftar<br>
+    <b>HP:</b> Otomatis pilih kamera depan<br>
+    <b>DroidCam:</b> Muncul di list setelah app DroidCam konek ke PC
+  </p>
+</div>
+
+<div id="wrap">
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="head-dot"></div>
+  <div id="action-big"></div>
+  <div id="zone-indicator"></div>
+  <div class="dir-label" id="dir-up">ATAS</div>
+  <div class="dir-label" id="dir-down">BAWAH</div>
+  <div class="dir-label" id="dir-left">KIRI</div>
+  <div class="dir-label" id="dir-right">KANAN</div>
+</div>
+
+<div id="guide">
+  <h3>PANDUAN KONTROL</h3>
+  <div class="guide-row"><span class="guide-dir">Kepala kiri</span><span class="guide-desc">Karakter geser ke kiri</span></div>
+  <div class="guide-row"><span class="guide-dir">Kepala kanan</span><span class="guide-desc">Karakter geser ke kanan</span></div>
+  <div class="guide-row"><span class="guide-dir">Kepala naik</span><span class="guide-desc">Karakter lompat / naik</span></div>
+  <div class="guide-row"><span class="guide-dir">Kepala turun</span><span class="guide-desc">Karakter jongkok / turun</span></div>
+  <div class="guide-row"><span class="guide-dir">Diam di tengah</span><span class="guide-desc">Karakter berhenti / idle</span></div>
+</div>
+
+<div id="cfg">
+  <input id="url" type="text" placeholder="ws://localhost:8765" value="ws://localhost:8765">
+  <button id="btn-connect" class="btn-off" onclick="toggleConnect()">Connect</button>
+</div>
+
+<div id="log">Klik Refresh untuk detect kamera...</div>
+
+<script>
+// Load MediaPipe secara manual dengan error handling
+const MEDIAPIPE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe'
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = src
+    s.crossOrigin = 'anonymous'
+    s.onload  = resolve
+    s.onerror = () => reject(new Error('Gagal load: ' + src))
+    document.head.appendChild(s)
+  })
+}
+
+async function loadMediaPipe() {
+  const overlay = document.getElementById('loading-overlay')
+  const loadText = document.getElementById('loading-text')
+  overlay.classList.add('show')
+
+  try {
+    loadText.textContent = 'Loading camera utils...'
+    await loadScript(MEDIAPIPE_CDN + '/camera_utils/camera_utils.js')
+
+    loadText.textContent = 'Loading drawing utils...'
+    await loadScript(MEDIAPIPE_CDN + '/drawing_utils/drawing_utils.js')
+
+    loadText.textContent = 'Loading pose model...'
+    await loadScript(MEDIAPIPE_CDN + '/pose/pose.js')
+
+    overlay.classList.remove('show')
+    log('MediaPipe loaded OK')
+    initPose()
+    return true
+  } catch(e) {
+    loadText.textContent = 'Gagal load MediaPipe: ' + e.message
+    log('ERROR: ' + e.message)
+    setStatus('Gagal load MediaPipe — cek koneksi internet', 'err')
+    overlay.classList.remove('show')
+    return false
+  }
+}
+
+// CONFIG
+const THRESHOLD_X  = 0.06
+const THRESHOLD_Y  = 0.05
+const DEAD_ZONE    = 0.02
+const SEND_RATE_MS = 50
+
+const video    = document.getElementById('video')
+const canvas   = document.getElementById('canvas')
+const ctx      = canvas.getContext('2d')
+const statusEl = document.getElementById('status')
+const logEl    = document.getElementById('log')
+const headDot  = document.getElementById('head-dot')
+const actionBig= document.getElementById('action-big')
+const zoneEl   = document.getElementById('zone-indicator')
+const camSel   = document.getElementById('cam-select')
+const btnConn  = document.getElementById('btn-connect')
+
+let ws = null, lastSendTime = 0
+let calibCenter = null, calibSamples = []
+let currentStream = null, camInstance = null
+let poseInstance = null, mediapipeReady = false
+
+function log(msg) {
+  const t = new Date().toLocaleTimeString()
+  logEl.innerHTML = '[' + t + '] ' + msg + '<br>' + logEl.innerHTML
+}
+function setStatus(msg, cls) {
+  statusEl.textContent = msg
+  statusEl.className = cls
+}
+
+function initPose() {
+  try {
+    poseInstance = new Pose({
+      locateFile: f => MEDIAPIPE_CDN + '/pose/' + f
+    })
+    poseInstance.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    })
+    poseInstance.onResults(onPoseResults)
+    mediapipeReady = true
+    log('Pose instance siap')
+  } catch(e) {
+    log('ERROR init pose: ' + e.message)
+    setStatus('Error init pose: ' + e.message, 'err')
+  }
+}
+
+async function refreshCameras() {
+  camSel.innerHTML = '<option value="">Detecting...</option>'
+  log('Scan kamera...')
+
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    tmp.getTracks().forEach(t => t.stop())
+  } catch(e) {
+    setStatus('Izin kamera ditolak', 'err')
+    log('Izin ditolak: ' + e.message)
+    camSel.innerHTML = '<option value="">Izin kamera ditolak</option>'
+    return
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  const cams    = devices.filter(d => d.kind === 'videoinput')
+  camSel.innerHTML = ''
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  let autoSelected = false
+
+  cams.forEach((cam, i) => {
+    const opt = document.createElement('option')
+    opt.value = cam.deviceId
+    let label = cam.label || ('Kamera ' + (i + 1))
+    const isFront = /front|face|user|depan|facetime/i.test(label)
+    const isBack  = /back|rear|belakang|environment|main/i.test(label)
+    const isDroid = /droidcam|obs|virtual|snap|manycam/i.test(label)
+    if (isDroid)      label = 'DroidCam — ' + label
+    else if (isFront) label = 'Kamera Depan — ' + label
+    else if (isBack)  label = 'Kamera Belakang — ' + label
+    else              label = 'Webcam — ' + label
+    opt.textContent = label
+    if (!autoSelected) {
+      if (isMobile && isFront)   { opt.selected = true; autoSelected = true }
+      else if (!isMobile && (isDroid || i === 0)) { opt.selected = true; autoSelected = true }
+    }
+    camSel.appendChild(opt)
+  })
+
+  const sep = document.createElement('option')
+  sep.disabled = true; sep.textContent = '──── Default ────'
+  camSel.appendChild(sep)
+
+  ;[
+    { val:'__front__', label:'Default Kamera Depan (HP)' },
+    { val:'__back__',  label:'Default Kamera Belakang (HP)' },
+    { val:'__any__',   label:'Kamera Apapun (Auto)' },
+  ].forEach(o => {
+    const el = document.createElement('option')
+    el.value = o.val; el.textContent = o.label
+    camSel.appendChild(el)
+  })
+
+  log('Ketemu ' + cams.length + ' kamera')
+  setStatus('Pilih kamera lalu tekan Mulai', 'warn')
+}
+
+async function startSelected() {
+  if (!mediapipeReady) {
+    setStatus('MediaPipe belum siap, tunggu sebentar...', 'warn')
+    return
+  }
+
+  const val = camSel.value
+  if (!val) { setStatus('Pilih kamera dulu', 'warn'); return }
+
+  if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null }
+  if (camInstance)   { camInstance.stop(); camInstance = null }
+
+  calibCenter = null; calibSamples = []
+
+  let constraints
+  if      (val === '__front__') constraints = { video: { facingMode: 'user' } }
+  else if (val === '__back__')  constraints = { video: { facingMode: { exact: 'environment' } } }
+  else if (val === '__any__')   constraints = { video: true }
+  else                          constraints = { video: { deviceId: { exact: val }, width: { ideal: 640 }, height: { ideal: 480 } } }
+
+  try {
+    setStatus('Membuka kamera...', 'warn')
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    currentStream = stream
+    video.srcObject = stream
+
+    document.getElementById('wrap').style.display  = 'block'
+    document.getElementById('guide').style.display = 'block'
+    document.getElementById('cfg').style.display   = 'flex'
+
+    // Tunggu video siap dulu sebelum start MediaPipe
+    await new Promise(res => { video.onloadedmetadata = res })
+    log('Video ready: ' + video.videoWidth + 'x' + video.videoHeight)
+
+    // Pake requestAnimationFrame manual — lebih robust dari Camera class
+    let frameRunning = true
+    camInstance = { stop: () => { frameRunning = false } }
+
+    async function frameLoop() {
+      if (!frameRunning) return
+      if (poseInstance && mediapipeReady && video.readyState >= 2) {
+        try {
+          await poseInstance.send({ image: video })
+        } catch(e) {
+          // Abaikan error per-frame
+        }
+      }
+      if (frameRunning) requestAnimationFrame(frameLoop)
+    }
+    requestAnimationFrame(frameLoop)
+
+    const label = camSel.options[camSel.selectedIndex]?.textContent || val
+    log('Kamera aktif: ' + label)
+    setStatus('Kalibrasi — diam sebentar...', 'warn')
+  } catch(e) {
+    setStatus('Gagal buka kamera: ' + e.message, 'err')
+    log('Camera error: ' + e.message)
+  }
+}
+
+function toggleConnect() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close(); ws = null
+    btnConn.textContent = 'Connect'; btnConn.className = 'btn-off'
+    document.getElementById('url').disabled = false
+    log('Disconnected')
+  } else {
+    const url = document.getElementById('url').value.trim()
+    if (!url) return
+    try {
+      ws = new WebSocket(url)
+      ws.onopen = () => {
+        setStatus('Connected: ' + url, 'ok'); log('WS connected')
+        btnConn.textContent = 'Disconnect'; btnConn.className = 'btn-on'
+        document.getElementById('url').disabled = true
+      }
+      ws.onclose = () => {
+        setStatus('Disconnected', 'err'); log('WS closed')
+        btnConn.textContent = 'Connect'; btnConn.className = 'btn-off'
+        document.getElementById('url').disabled = false
+        ws = null
+      }
+      ws.onerror = () => { setStatus('Gagal konek ke server', 'err'); log('WS error') }
+      setStatus('Connecting...', 'warn')
+    } catch(e) { log('Error: ' + e.message) }
+  }
+}
+
+function calibrate(x, y) {
+  if (calibCenter) return
+  calibSamples.push({ x, y })
+  if (calibSamples.length < 30) {
+    setStatus('Kalibrasi... diam ' + (30 - calibSamples.length) + ' frame', 'warn')
+    return
+  }
+  calibCenter = {
+    x: calibSamples.reduce((s,p) => s+p.x, 0) / calibSamples.length,
+    y: calibSamples.reduce((s,p) => s+p.y, 0) / calibSamples.length,
+  }
+  log('Kalibrasi selesai!')
+  setStatus(ws && ws.readyState === WebSocket.OPEN ? 'Siap! Gerakin kepala lo' : 'Siap! Konek ke server dulu', ws && ws.readyState === WebSocket.OPEN ? 'ok' : 'warn')
+}
+
+function detectAction(dx, dy) {
+  const ax = Math.abs(dx), ay = Math.abs(dy)
+  if (ax < DEAD_ZONE && ay < DEAD_ZONE) return 'idle'
+  if (ay > ax) {
+    if (dy < -THRESHOLD_Y) return 'up'
+    if (dy >  THRESHOLD_Y) return 'down'
+  } else {
+    if (dx < -THRESHOLD_X) return 'left'
+    if (dx >  THRESHOLD_X) return 'right'
+  }
+  return 'idle'
+}
+
+const COLORS = {
+  up:   { b:'#00ff88', s:'#00ff8855', l:'NAIK' },
+  down: { b:'#ff4444', s:'#ff444455', l:'TURUN' },
+  left: { b:'#00d4ff', s:'#00d4ff55', l:'KIRI' },
+  right:{ b:'#ffaa00', s:'#ffaa0055', l:'KANAN' },
+  idle: { b:'transparent', s:'none',  l:'' },
+}
+
+function updateUI(action, dotX, dotY) {
+  const c = COLORS[action]
+  zoneEl.style.boxShadow  = action !== 'idle' ? 'inset 0 0 20px '+c.s+', 0 0 20px '+c.s : 'none'
+  zoneEl.style.border     = action !== 'idle' ? '2px solid '+c.b : 'none'
+  actionBig.textContent   = c.l
+  actionBig.style.opacity = action !== 'idle' ? '1' : '0'
+  actionBig.style.color   = c.b
+  const wrap = document.getElementById('wrap')
+  headDot.style.left = ((1 - dotX) * wrap.clientWidth) + 'px'
+  headDot.style.top  = (dotY * wrap.clientHeight) + 'px'
+}
+
+function sendData(action, nose) {
+  const now = Date.now()
+  if (now - lastSendTime < SEND_RATE_MS) return
+  lastSendTime = now
+  if (!ws || ws.readyState !== WebSocket.OPEN) return
+  try { ws.send(JSON.stringify({ action, x: nose.x, y: nose.y, z: nose.z||0, ts: now })) } catch(e) {}
+}
+
+function onPoseResults(results) {
+  canvas.width  = video.videoWidth  || 640
+  canvas.height = video.videoHeight || 480
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  if (!results.poseLandmarks) return
+  const lm = results.poseLandmarks
+  const nose = lm[0]
+  if (!nose || nose.visibility < 0.3) return
+
+  // Skeleton tipis upper body
+  [[11,12],[11,13],[12,14],[0,11],[0,12]].forEach(([a,b]) => {
+    if (!lm[a]||!lm[b]) return
+    ctx.beginPath()
+    ctx.moveTo(lm[a].x*canvas.width, lm[a].y*canvas.height)
+    ctx.lineTo(lm[b].x*canvas.width, lm[b].y*canvas.height)
+    ctx.strokeStyle='#ffffff22'; ctx.lineWidth=1; ctx.stroke()
+  })
+
+  ctx.beginPath()
+  ctx.arc(nose.x*canvas.width, nose.y*canvas.height, 12, 0, 2*Math.PI)
+  ctx.fillStyle='#00ff88'; ctx.fill()
+  ctx.beginPath()
+  ctx.arc(nose.x*canvas.width, nose.y*canvas.height, 20, 0, 2*Math.PI)
+  ctx.strokeStyle='#00ff8844'; ctx.lineWidth=3; ctx.stroke()
+
+  calibrate(nose.x, nose.y)
+  if (!calibCenter) return
+
+  const dx = nose.x - calibCenter.x
+  const dy = nose.y - calibCenter.y
+
+  const cx = calibCenter.x*canvas.width, cy = calibCenter.y*canvas.height
+  const nx = nose.x*canvas.width,        ny = nose.y*canvas.height
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nx,ny)
+  ctx.strokeStyle='#00d4ff66'; ctx.lineWidth=2; ctx.stroke()
+  ctx.beginPath(); ctx.arc(cx,cy,4,0,2*Math.PI)
+  ctx.fillStyle='#ffffff44'; ctx.fill()
+
+  const action = detectAction(dx, dy)
+  updateUI(action, nose.x, nose.y)
+  sendData(action, nose)
+}
+
+// Init
+window.onload = async () => {
+  log('Nyalain app...')
+  const ok = await loadMediaPipe()
+  if (ok) {
+    log('Siap! Klik Refresh untuk detect kamera.')
+  }
+}
+</script>
+</body>
+</html>
