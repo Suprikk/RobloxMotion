@@ -12,7 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- URL relay server lo
 -- Ganti ke URL server kalau udah di-deploy
 -- ================================
-local URL = "http://localhost:5000/pose"
+local URL = "web-production-7178.up.railway.app"
 -- ================================
 
 -- Bikin RemoteFunction kalau belum ada
