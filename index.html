@@ -203,13 +203,28 @@ canvas { position:absolute; top:0; left:0; width:100%; height:100%; transform:sc
 </div>
 
 <div id="cfg">
-  <input id="url" type="text" placeholder="ws://localhost:8765" value="wss://web-production-7178.up.railway.app/ws">
+  <input id="url" type="text" placeholder="ws://localhost:8765" value="ws://localhost:8765">
   <button id="btn-connect" class="btn-off" onclick="toggleConnect()">Connect</button>
 </div>
 
 <div id="log">Klik Refresh untuk detect kamera...</div>
 
 <script>
+// NoSleep workaround — pake AudioContext buat cegah throttling di background
+let audioCtx = null
+function keepAliveAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const oscillator = audioCtx.createOscillator()
+    const gainNode = audioCtx.createGain()
+    gainNode.gain.value = 0  // volume 0 — ga ada suara
+    oscillator.connect(gainNode)
+    gainNode.connect(audioCtx.destination)
+    oscillator.start()
+    log('Audio keepalive aktif')
+  } catch(e) {}
+}
+
 // Load MediaPipe secara manual dengan error handling
 const MEDIAPIPE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe'
 
@@ -256,7 +271,7 @@ async function loadMediaPipe() {
 const THRESHOLD_X  = 0.06
 const THRESHOLD_Y  = 0.05
 const DEAD_ZONE    = 0.02
-const SEND_RATE_MS = 33
+const SEND_RATE_MS = 50
 
 const video    = document.getElementById('video')
 const canvas   = document.getElementById('canvas')
@@ -417,6 +432,7 @@ async function startSelected() {
 
     const label = camSel.options[camSel.selectedIndex]?.textContent || val
     log('Kamera aktif: ' + label)
+    keepAliveAudio()  // aktifkan audio keepalive biar ga throttle di background
     setStatus('Kalibrasi — diam sebentar...', 'warn')
   } catch(e) {
     setStatus('Gagal buka kamera: ' + e.message, 'err')
@@ -587,6 +603,29 @@ function onPoseResults(results) {
 }
 
 // Init
+// Cegah throttling saat background
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    log('Tab di-background — detection mungkin melambat')
+  } else {
+    log('Tab aktif kembali')
+    // Reset kalibrasi biar fresh
+    calibSamples = []
+  }
+})
+
+// Wake Lock API — cegah layar mati dan throttling
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      await navigator.wakeLock.request('screen')
+      log('Wake Lock aktif — layar tidak akan mati')
+    } catch(e) {
+      log('Wake Lock gagal: ' + e.message)
+    }
+  }
+}
+
 window.onload = async () => {
   log('Nyalain app...')
 
@@ -611,6 +650,7 @@ window.onload = async () => {
   window.addEventListener('orientationchange', checkOrientation)
   checkOrientation()
   const ok = await loadMediaPipe()
+  await requestWakeLock()
   if (ok) {
     log('Siap! Klik Refresh untuk detect kamera.')
   }
@@ -618,4 +658,3 @@ window.onload = async () => {
 </script>
 </body>
 </html>
-
